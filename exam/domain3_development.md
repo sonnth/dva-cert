@@ -79,14 +79,18 @@
 ### 🧩 Topic: AWS Lambda Startup Optimization (Cold Starts & Provisioned Concurrency)
 
 #### 🔑 Keywords Nhận Diện
-* `optimize the startup time` / `optimize the initialization of the function` (tối ưu hóa thời gian khởi tạo hoặc khởi động của Lambda).
-* `infrequently invoked by multiple clients at the same time` (gọi không thường xuyên nhưng khi gọi thì nhiều client gọi cùng lúc - nguyên nhân chính gây ra Cold Starts trên nhiều container đồng thời).
+* `optimize the startup time` / `optimize the initialization of the function` / `latency bottlenecks` (tối ưu hóa thời gian khởi động, khắc phục nghẽn trễ của Lambda).
+* `multiple clients at the same time` / `traffic spike` / `upcoming sale` (lượng lớn client truy cập cùng lúc hoặc đợt tăng vọt lưu lượng truy cập dự kiến).
+* `least effort` / `on a schedule` (tự động hóa theo lịch trình định sẵn).
 
 #### 💡 Tip & Trick Chọn Đáp Án
 * **Kích hoạt Provisioned Concurrency:**
   * Để loại bỏ hoàn toàn hiện tượng Cold Start (trễ khởi tạo môi trường chạy), hãy sử dụng tính năng **Provisioned Concurrency**. Tính năng này chuẩn bị sẵn (pre-warm) một số lượng môi trường thực thi đã được khởi tạo toàn bộ, giúp Lambda phản hồi ngay lập tức khi có request đến.
+  * **Tự động cấu hình theo lịch trình (Scheduled Scaling):** Đối với các đợt tăng traffic có thể dự đoán trước (như ngày hội mua sắm Thanksgiving, Black Friday), giải pháp tối ưu nhất là cấu hình **Application Auto Scaling** để quản lý **Lambda Provisioned Concurrency theo lịch trình (on a schedule)**. Điều này giúp hệ thống tự động tăng (scale-up) lượng container sẵn sàng trước giờ G và tự động giảm (scale-down) sau khi đợt sale kết thúc để tiết kiệm chi phí.
 * **Loại trừ các tùy chọn sai/không phù hợp:**
-  * *API Gateway Caching:* Mặc dù giúp giảm tải và trả phản hồi nhanh cho client bằng dữ liệu đệm, nhưng nó không giải quyết được thời gian khởi tạo thực tế của chính hàm Lambda (khi cache miss hoặc cho request động).
+  * *Quản lý Reserved Concurrency on a schedule:* Reserved Concurrency dùng để giới hạn số lượng chạy đồng thời tối đa của một hàm Lambda nhằm tránh gây nghẽn cho các hàm khác. Nó **không** có tác dụng chuẩn bị sẵn container (pre-warm) nên không giải quyết được vấn đề trễ khởi động (cold start).
+  * *Tự động co giãn mặc định của Lambda:* Mặc dù Lambda tự động co giãn theo số lượng request, nhưng các container mới khởi chạy khi traffic tăng vọt đột ngột vẫn sẽ bị dính hiện tượng trễ khởi động (cold start) nghiêm trọng, gây nghẽn trễ (latency bottleneck).
+  * *API Gateway Caching / Application Load Balancer (ALB):* Không giải quyết được thời gian khởi tạo thực tế của chính container Lambda.
   * *Lambda Proxy Integration:* Chỉ là phương thức truyền dữ liệu thô (raw format) giữa API Gateway và Lambda, không ảnh hưởng đến thời gian khởi chạy/khởi tạo container của Lambda.
   * *AWS Global Accelerator:* Tối ưu hóa định tuyến mạng toàn cầu để giảm độ trễ đường truyền internet (network latency), không liên quan đến thời gian khởi động của container Lambda.
 
@@ -177,3 +181,31 @@
 * **Loại trừ các tùy chọn sai/không phù hợp:**
   * *16 TiB:* Đây là kích thước ổ đĩa tối đa (max volume size) mà gp2 hỗ trợ, chứ không phải kích thước tối thiểu để đạt max IOPS.
   * *10.6 TiB, 2.7 TiB:* Các con số sai lệch do tính toán sai tỉ lệ IOPS/GiB.
+
+### 🧩 Topic: Amazon SQS Queue Capacity Limits (Maximum Stored Messages)
+
+#### 🔑 Keywords Nhận Diện
+* `SQS queues` / `send and receive messages`: Bài toán xoay quanh dịch vụ hàng đợi Amazon SQS.
+* `maximum number of messages` / `limits of the system`: Hỏi giới hạn tối đa số lượng message có thể lưu trong queue.
+
+#### 💡 Tip & Trick Chọn Đáp Án
+* **SQS không giới hạn số lượng message trong queue (No limit):**
+  * Với Amazon SQS (cả Standard và FIFO), AWS không đặt giới hạn cứng về **số lượng message đang lưu** trong một queue. Queue có thể tăng theo nhu cầu tải.
+  * Vì vậy khi đề hỏi *maximum number of messages that can be stored in an SQS queue*, đáp án đúng là **no limit**.
+* **Phân biệt với các giới hạn khác để tránh bẫy:**
+  * SQS có nhiều giới hạn khác như thời gian lưu message (retention period), throughput, visibility timeout..., nhưng **không có giới hạn cố định** kiểu 10,000 / 100,000 / 10,000,000 cho tổng số message lưu trong queue.
+
+### 🧩 Topic: Amazon SQS Error Handling with Dead-Letter Queue (DLQ)
+
+#### 🔑 Keywords Nhận Diện
+* `messages are not processed` / `end up in errors`: Message xử lý thất bại nhiều lần.
+* `isolated for further processing and troubleshooting`: Cần tách riêng message lỗi để điều tra/xử lý lại.
+
+#### 💡 Tip & Trick Chọn Đáp Án
+* **Implement a Dead-Letter Queue (DLQ) là đáp án đúng:**
+  * Cấu hình **Redrive Policy** cho queue chính để khi message vượt quá số lần nhận lại (`maxReceiveCount`), SQS tự động chuyển message đó sang **DLQ**.
+  * DLQ giúp cô lập message lỗi khỏi luồng xử lý chính, tránh retry vô hạn và thuận tiện cho troubleshooting/reprocessing.
+* **Loại trừ các đáp án còn lại:**
+  * *Reduce the VisibilityTimeout:* Làm message quay lại queue sớm hơn, dễ tăng duplicate processing và không giải quyết việc cô lập message lỗi.
+  * *Use DeleteMessage:* Chỉ dùng khi xử lý thành công; nếu dùng sai có thể làm mất message lỗi thay vì giữ lại để điều tra.
+  * *Increase the VisibilityTimeout:* Chỉ kéo dài thời gian ẩn message trong lúc đang xử lý, không tách message lỗi sang khu vực riêng.
